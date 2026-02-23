@@ -13,35 +13,96 @@
         Velg modell (1800/1900), skriv inn ord og hent nærliggende ord fra API.
       </p>
 
-      <form id="words-form" class="controls">
-        <label>
-          Ord (kommaseparert eller mellomrom)
-          <input
-            id="words-input"
-            type="text"
-            value="Qvinde Kvinde Kvinne"
-            autocomplete="off"
-          />
-        </label>
+      <nav class="tabs">
+        <button class="tab-button active" data-tab="list-tab" type="button">
+          Ordliste
+        </button>
+        <button class="tab-button" data-tab="graph-tab" type="button">
+          Graf
+        </button>
+      </nav>
 
-        <label>
-          Antall nærliggende ord
-          <input id="limit-input" type="number" min="1" max="30" value="10" />
-        </label>
+      <section id="list-tab" class="tab-content active">
+        <form id="words-form" class="controls">
+          <label>
+            Ord (kommaseparert eller mellomrom)
+            <input
+              id="words-input"
+              type="text"
+              value="Qvinde Kvinde Kvinne"
+              autocomplete="off"
+            />
+          </label>
 
-        <label>
-          Modell
-          <select id="model-select">
-            <option value="vss_1850_cos">1800-tallet</option>
-            <option value="vss_1950-2015_cos">1900-tallet</option>
-          </select>
-        </label>
+          <label>
+            Antall nærliggende ord
+            <input id="limit-input" type="number" min="1" max="30" value="10" />
+          </label>
 
-        <button type="submit">Hent ord</button>
-      </form>
+          <label>
+            Modell
+            <select id="model-select">
+              <option value="vss_1850_cos">1800-tallet</option>
+              <option value="vss_1950-2015_cos">1900-tallet</option>
+            </select>
+          </label>
 
-      <p id="status" class="status"></p>
-      <section id="results" class="results"></section>
+          <button type="submit">Hent ord</button>
+        </form>
+
+        <p id="status" class="status"></p>
+        <section id="results" class="results"></section>
+      </section>
+
+      <section id="graph-tab" class="tab-content">
+        <form id="graph-form" class="controls">
+          <label>
+            Startord
+            <input
+              id="graph-seed-input"
+              type="text"
+              value="Kvinne"
+              autocomplete="off"
+            />
+          </label>
+
+          <label>
+            Iterasjoner (N)
+            <input id="graph-depth-input" type="number" min="1" max="2" value="2" />
+          </label>
+
+          <label>
+            Maks naboer per ord
+            <input id="graph-neighbors-input" type="number" min="1" max="10" value="10" />
+          </label>
+
+          <label>
+            Likhetsgrense
+            <input
+              id="graph-threshold-input"
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.7"
+            />
+          </label>
+
+          <label>
+            Modell
+            <select id="graph-model-select">
+              <option value="vss_1850_cos">1800-tallet</option>
+              <option value="vss_1950-2015_cos">1900-tallet</option>
+            </select>
+          </label>
+
+          <button type="submit">Bygg graf</button>
+        </form>
+
+        <p id="graph-status" class="status"></p>
+        <section id="graph-canvas" class="graph-canvas"></section>
+        <section id="cluster-results" class="cluster-results"></section>
+      </section>
     </main>
 
     <script type="module" src="./app.js"></script>

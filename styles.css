@@ -24,6 +24,32 @@ h1 {
   color: #4b5563;
 }
 
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.tab-button {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+}
+
+.tab-button.active {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
 .controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -85,4 +111,26 @@ button:hover {
 .result-list {
   margin: 0;
   color: #111827;
+}
+
+.graph-canvas {
+  margin-top: 0.8rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  min-height: 560px;
+  overflow: hidden;
+}
+
+.cluster-results {
+  margin-top: 0.8rem;
+}
+
+.cluster-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.cluster-list li {
+  margin-bottom: 0.45rem;
 }
