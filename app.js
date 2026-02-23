@@ -31,6 +31,27 @@ async function fetchSimilarWords(word, limit, collectionName) {
   return response.json();
 }
 
+function normalizeResults(results) {
+  if (!Array.isArray(results)) {
+    return [];
+  }
+
+  return results
+    .map((item) => {
+      if (Array.isArray(item) && item.length >= 2) {
+        return { word: String(item[0]), score: Number(item[1]) };
+      }
+      if (item && typeof item === "object" && "word" in item) {
+        return {
+          word: String(item.word),
+          score: Number(item.score ?? 0),
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function renderResults(groups) {
   resultsEl.innerHTML = "";
 
@@ -71,7 +92,8 @@ async function handleSubmit(event) {
   try {
     const groups = [];
     for (const word of words) {
-      const results = await fetchSimilarWords(word, limit, model);
+      const rawResults = await fetchSimilarWords(word, limit, model);
+      const results = normalizeResults(rawResults);
       groups.push({ word, results });
     }
 
@@ -80,8 +102,10 @@ async function handleSubmit(event) {
       model === "vss_1850_cos" ? "1800-tallet" : "1900-tallet"
     }.`;
   } catch (error) {
-    statusEl.textContent =
-      "Kunne ikke hente data fra API. Sjekk nettverk/CORS og prøv igjen.";
+    const message = error instanceof TypeError
+      ? "Kunne ikke kontakte API-et. Sjekk nettverk og prøv igjen."
+      : "Kunne ikke hente data fra API.";
+    statusEl.textContent = message;
     console.error(error);
   }
 }
