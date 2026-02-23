@@ -104,7 +104,24 @@
             </select>
           </label>
 
+          <label>
+            Vis cluster-ord
+            <select id="graph-cluster-words-select">
+              <option value="top12">Topp 12</option>
+              <option value="all">Alle</option>
+            </select>
+          </label>
+
+          <label>
+            Cluster-algoritme
+            <select id="graph-algorithm-select">
+              <option value="cw">Chinese Whispers</option>
+              <option value="louvain">Louvain</option>
+            </select>
+          </label>
+
           <button type="submit">Bygg graf</button>
+          <button id="graph-recluster-btn" type="button">Recluster graf</button>
         </form>
 
         <p id="graph-status" class="status"></p>

@@ -1,4 +1,6 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+import Graph from "https://esm.sh/graphology@0.26.0";
+import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
 const BASE_URL = "https://api.nb.no/dhlab/similarity";
 const MAX_GRAPH_NODES = 1000;
@@ -17,12 +19,16 @@ const graphNeighborsInput = document.querySelector("#graph-neighbors-input");
 const graphThresholdInput = document.querySelector("#graph-threshold-input");
 const graphModelSelect = document.querySelector("#graph-model-select");
 const graphNormalizationSelect = document.querySelector("#graph-normalization-select");
+const graphClusterWordsSelect = document.querySelector("#graph-cluster-words-select");
+const graphAlgorithmSelect = document.querySelector("#graph-algorithm-select");
+const graphReclusterBtn = document.querySelector("#graph-recluster-btn");
 const graphStatusEl = document.querySelector("#graph-status");
 const graphCanvasEl = document.querySelector("#graph-canvas");
 const clusterResultsEl = document.querySelector("#cluster-results");
 
 const tabButtons = [...document.querySelectorAll(".tab-button")];
 const tabContents = [...document.querySelectorAll(".tab-content")];
+let lastBuiltGraph = null;
 
 function setActiveTab(tabId) {
   for (const button of tabButtons) {
@@ -316,7 +322,55 @@ function runChineseWhispers(nodes, edges, iterations = 12) {
   return { clusters, clusterByNode };
 }
 
-function renderClusters(nodes, clusters) {
+function runLouvain(nodes, edges) {
+  const graph = new Graph({ type: "undirected", multi: false });
+  for (const node of nodes) {
+    graph.addNode(node.id);
+  }
+  for (const edge of edges) {
+    const key = `${edge.source}::${edge.target}`;
+    if (!graph.hasEdge(key)) {
+      graph.addUndirectedEdgeWithKey(key, edge.source, edge.target, {
+        weight: edge.weight,
+      });
+    }
+  }
+
+  const labels = louvain(graph, { getEdgeWeight: "weight" });
+  const groups = new Map();
+  for (const node of nodes) {
+    const label = String(labels[node.id] ?? node.id);
+    if (!groups.has(label)) {
+      groups.set(label, []);
+    }
+    groups.get(label).push(node.id);
+  }
+
+  const clusters = [...groups.values()]
+    .map((members) => ({
+      members,
+      size: members.length,
+    }))
+    .sort((a, b) => b.size - a.size);
+
+  const clusterByNode = new Map();
+  clusters.forEach((cluster, idx) => {
+    for (const nodeId of cluster.members) {
+      clusterByNode.set(nodeId, idx);
+    }
+  });
+
+  return { clusters, clusterByNode };
+}
+
+function clusterGraph(nodes, edges, algorithm) {
+  if (algorithm === "louvain") {
+    return runLouvain(nodes, edges);
+  }
+  return runChineseWhispers(nodes, edges);
+}
+
+function renderClusters(nodes, clusters, showAllWords = false) {
   const nodeById = new Map(nodes.map((node) => [node.id, node.word]));
   clusterResultsEl.innerHTML = "";
 
@@ -332,9 +386,9 @@ function renderClusters(nodes, clusters) {
   clusters.forEach((cluster, idx) => {
     const item = document.createElement("li");
     const words = cluster.members.map((id) => nodeById.get(id) || id);
-    item.textContent = `Cluster ${idx + 1} (${cluster.size}): ${words
-      .slice(0, 12)
-      .join(", ")}${words.length > 12 ? " ..." : ""}`;
+    const visibleWords = showAllWords ? words : words.slice(0, 12);
+    const suffix = showAllWords || words.length <= 12 ? "" : " ...";
+    item.textContent = `Cluster ${idx + 1} (${cluster.size}): ${visibleWords.join(", ")}${suffix}`;
     list.append(item);
   });
 
@@ -445,6 +499,24 @@ function renderGraph(graph, clusterByNode) {
   });
 }
 
+function renderClusteredGraph(graph, options) {
+  if (!graph || graph.nodes.length === 0) {
+    graphStatusEl.textContent = "Ingen graf å vise.";
+    graphCanvasEl.innerHTML = "";
+    clusterResultsEl.innerHTML = "";
+    return;
+  }
+
+  const { clusters, clusterByNode } = clusterGraph(
+    graph.nodes,
+    graph.edges,
+    options.algorithm,
+  );
+  renderGraph(graph, clusterByNode);
+  renderClusters(graph.nodes, clusters, options.showAllClusterWords);
+  graphStatusEl.textContent = `Ferdig: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${options.normalizationMode}, ${options.algorithm}).`;
+}
+
 async function handleGraphSubmit(event) {
   event.preventDefault();
 
@@ -460,6 +532,8 @@ async function handleGraphSubmit(event) {
   );
   const model = graphModelSelect.value;
   const normalizationMode = graphNormalizationSelect.value;
+  const showAllClusterWords = graphClusterWordsSelect.value === "all";
+  const algorithm = graphAlgorithmSelect.value;
 
   if (!seedWord) {
     graphStatusEl.textContent = "Skriv inn ett startord.";
@@ -480,22 +554,40 @@ async function handleGraphSubmit(event) {
       model,
       normalizationMode,
     });
+    lastBuiltGraph = graph;
 
     if (graph.nodes.length === 0) {
       graphStatusEl.textContent = "Ingen treff for valgt oppsett.";
       return;
     }
 
-    const { clusters, clusterByNode } = runChineseWhispers(graph.nodes, graph.edges);
-    renderGraph(graph, clusterByNode);
-    renderClusters(graph.nodes, clusters);
-
-    graphStatusEl.textContent = `Ferdig: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${normalizationMode}).`;
+    renderClusteredGraph(graph, {
+      algorithm,
+      showAllClusterWords,
+      normalizationMode,
+    });
   } catch (error) {
     graphStatusEl.textContent = "Kunne ikke bygge graf fra API-kall.";
     console.error(error);
   }
 }
 
+function handleRecluster() {
+  if (!lastBuiltGraph || lastBuiltGraph.nodes.length === 0) {
+    graphStatusEl.textContent = "Bygg en graf først, deretter kan du reclustre.";
+    return;
+  }
+
+  const normalizationMode = graphNormalizationSelect.value;
+  const showAllClusterWords = graphClusterWordsSelect.value === "all";
+  const algorithm = graphAlgorithmSelect.value;
+  renderClusteredGraph(lastBuiltGraph, {
+    algorithm,
+    showAllClusterWords,
+    normalizationMode,
+  });
+}
+
 form.addEventListener("submit", handleWordListSubmit);
 graphForm.addEventListener("submit", handleGraphSubmit);
+graphReclusterBtn.addEventListener("click", handleRecluster);
