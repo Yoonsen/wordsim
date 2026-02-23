@@ -16,6 +16,7 @@ const graphDepthInput = document.querySelector("#graph-depth-input");
 const graphNeighborsInput = document.querySelector("#graph-neighbors-input");
 const graphThresholdInput = document.querySelector("#graph-threshold-input");
 const graphModelSelect = document.querySelector("#graph-model-select");
+const graphNormalizationSelect = document.querySelector("#graph-normalization-select");
 const graphStatusEl = document.querySelector("#graph-status");
 const graphCanvasEl = document.querySelector("#graph-canvas");
 const clusterResultsEl = document.querySelector("#cluster-results");
@@ -47,8 +48,15 @@ function parseWords(rawText) {
     .filter(Boolean);
 }
 
-function normalizeWord(word) {
-  return String(word || "").trim().toLowerCase();
+function normalizeWord(word, mode = "case-sensitive") {
+  const trimmed = String(word || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (mode === "normalized") {
+    return trimmed.toLocaleLowerCase("nb-NO");
+  }
+  return trimmed;
 }
 
 async function fetchSimilarWords(word, limit, collectionName) {
@@ -143,8 +151,8 @@ async function handleWordListSubmit(event) {
   }
 }
 
-function addNode(nodesById, word, depth) {
-  const id = normalizeWord(word);
+function addNode(nodesById, word, depth, normalizationMode) {
+  const id = normalizeWord(word, normalizationMode);
   if (!id) {
     return null;
   }
@@ -179,7 +187,7 @@ async function buildGraph(seedWord, options) {
   const queued = new Set();
   const queue = [];
 
-  const root = addNode(nodesById, seedWord, 0);
+  const root = addNode(nodesById, seedWord, 0, options.normalizationMode);
   if (!root) {
     return { nodes: [], edges: [] };
   }
@@ -206,7 +214,12 @@ async function buildGraph(seedWord, options) {
       .slice(0, options.maxNeighbors);
 
     for (const neighbor of neighbors) {
-      const node = addNode(nodesById, neighbor.word, current.depth + 1);
+      const node = addNode(
+        nodesById,
+        neighbor.word,
+        current.depth + 1,
+        options.normalizationMode,
+      );
       if (!node) {
         continue;
       }
@@ -446,6 +459,7 @@ async function handleGraphSubmit(event) {
     Math.max(0, Number(graphThresholdInput.value) || 0.7),
   );
   const model = graphModelSelect.value;
+  const normalizationMode = graphNormalizationSelect.value;
 
   if (!seedWord) {
     graphStatusEl.textContent = "Skriv inn ett startord.";
@@ -464,6 +478,7 @@ async function handleGraphSubmit(event) {
       maxNeighbors,
       threshold,
       model,
+      normalizationMode,
     });
 
     if (graph.nodes.length === 0) {
@@ -475,7 +490,7 @@ async function handleGraphSubmit(event) {
     renderGraph(graph, clusterByNode);
     renderClusters(graph.nodes, clusters);
 
-    graphStatusEl.textContent = `Ferdig: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre.`;
+    graphStatusEl.textContent = `Ferdig: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${normalizationMode}).`;
   } catch (error) {
     graphStatusEl.textContent = "Kunne ikke bygge graf fra API-kall.";
     console.error(error);
