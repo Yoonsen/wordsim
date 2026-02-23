@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wordsim</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Nærliggende ord</h1>
+      <p class="subtitle">
+        Velg modell (1800/1900), skriv inn ord og hent nærliggende ord fra API.
+      </p>
+
+      <form id="words-form" class="controls">
+        <label>
+          Ord (kommaseparert eller mellomrom)
+          <input
+            id="words-input"
+            type="text"
+            value="Qvinde Kvinde Kvinne"
+            autocomplete="off"
+          />
+        </label>
+
+        <label>
+          Antall nærliggende ord
+          <input id="limit-input" type="number" min="1" max="30" value="10" />
+        </label>
+
+        <label>
+          Modell
+          <select id="model-select">
+            <option value="vss_1850_cos">1800-tallet</option>
+            <option value="vss_1950-2015_cos">1900-tallet</option>
+          </select>
+        </label>
+
+        <button type="submit">Hent ord</button>
+      </form>
+
+      <p id="status" class="status"></p>
+      <section id="results" class="results"></section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+  </html>
