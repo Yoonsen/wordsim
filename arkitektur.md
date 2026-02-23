@@ -7,12 +7,16 @@ Applikasjonen er en statisk frontend som kjører i nettleser og henter data dire
 ## Komponenter
 
 - `index.html`
-  - Struktur og inputs (ord, antall, modellvalg).
+  - Fane for ordlister og fane for graf.
+  - Inputs for modell, terskel, dybde og nabo-grense.
+  - Nedlastingsknapper for JSON-eksport.
 - `app.js`
-  - Input-parsing.
-  - API-kall mot `/sim_words`.
+  - Input-parsing og API-kall mot `/sim_words`.
   - Normalisering av responsformat (liste av lister / objektfallback).
-  - Rendering av resultater.
+  - Rekursiv grafbygging med traversal-kontroll (`fetched` + `queued`).
+  - Clustering med Louvain.
+  - D3-rendering av force-directed graf.
+  - JSON-eksport for ordlister og clustre.
 - `styles.css`
   - Enkel layout og presentasjon.
 - `.github/workflows/deploy-pages.yml`
@@ -25,24 +29,22 @@ Applikasjonen er en statisk frontend som kjører i nettleser og henter data dire
    - `https://api.nb.no/dhlab/similarity/sim_words`
    - parametre: `word`, `limit`, `collection_name`
 3. Respons normaliseres til intern struktur `{ word, score }`.
-4. Resultater vises som ordlister per forespurt ord.
+4. For graf-fanen bygges noder/kanter iterativt med begrensninger.
+5. Louvain beregner cluster-medlemskap, som vises i graf + clusterliste.
+6. Datasett kan lastes ned som JSON fra UI.
 
 ## Designvalg
 
 - Ingen backend i denne versjonen.
 - Ingen rammeverk: lav kompleksitet, rask oppstart.
-- Fokus på robust parsing og tydelige feilmeldinger.
+- Fokus på robust parsing, tydelige feilmeldinger og rask interaktivitet.
+- Fast algoritme (Louvain) i UI for å holde brukerflyten enkel.
 
-## Utvidelser (graf/rekursjon)
+## Utvidelser (neste fase)
 
-- Introduser en intern grafmodell:
-  - `nodes`: unike ord
-  - `edges`: relasjoner med `score`
-- Rekursiv henting med begrensninger:
-  - `maxDepth` (dybde)
-  - `maxNeighbors` (bredde)
-  - `minScore` (terskel)
-  - `visited`-sett for å unngå sykluser
-- Visualisering:
-  - enkel force-directed graf (f.eks. D3 eller vis-network)
-  - filtrering og highlighting i UI
+- Legg inn ny clustering-algoritme som alternativ til Louvain.
+- Evaluering bør sammenligne:
+  - cluster-konsistens mellom kjøringer
+  - runtime på små/middels/store grafer
+  - semantisk kvalitet i historiske case
+- Behold samme grafmodell (`nodes`, `edges`) og gjenbruk eksisterende UI.
