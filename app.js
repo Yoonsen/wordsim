@@ -513,19 +513,19 @@ function renderGraph(graph, clusterByNode) {
 }
 
 function readGraphControls() {
-  const seedWord = graphSeedInput.value.trim();
-  const depth = Math.min(2, Math.max(1, Number(graphDepthInput.value) || 1));
+  const seedWord = graphSeedInput?.value?.trim() || "";
+  const depth = Math.min(2, Math.max(1, Number(graphDepthInput?.value) || 1));
   const maxNeighbors = Math.min(
     10,
-    Math.max(1, Number(graphNeighborsInput.value) || 10),
+    Math.max(1, Number(graphNeighborsInput?.value) || 10),
   );
   const threshold = Math.min(
     1,
-    Math.max(0, Number(graphThresholdInput.value) || 0.7),
+    Math.max(0, Number(graphThresholdInput?.value) || 0.7),
   );
-  const model = graphModelSelect.value;
-  const normalizationMode = graphNormalizationSelect.value;
-  const algorithm = graphAlgorithmSelect.value;
+  const model = graphModelSelect?.value || "vss_1850_cos";
+  const normalizationMode = graphNormalizationSelect?.value || "case-sensitive";
+  const algorithm = graphAlgorithmSelect?.value || "cw";
 
   return {
     build: {
@@ -651,6 +651,12 @@ async function handleRecluster() {
   });
 }
 
-form.addEventListener("submit", handleWordListSubmit);
-graphForm.addEventListener("submit", handleGraphSubmit);
-graphReclusterBtn.addEventListener("click", handleRecluster);
+if (form) {
+  form.addEventListener("submit", handleWordListSubmit);
+}
+if (graphForm) {
+  graphForm.addEventListener("submit", handleGraphSubmit);
+}
+if (graphReclusterBtn) {
+  graphReclusterBtn.addEventListener("click", handleRecluster);
+}
