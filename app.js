@@ -4,6 +4,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
 const BASE_URL = "https://api.nb.no/dhlab/similarity";
 const MAX_GRAPH_NODES = 1000;
+const DEFAULT_CLUSTER_ALGORITHM = "louvain";
 
 const form = document.querySelector("#words-form");
 const wordsInput = document.querySelector("#words-input");
@@ -11,6 +12,7 @@ const limitInput = document.querySelector("#limit-input");
 const modelSelect = document.querySelector("#model-select");
 const statusEl = document.querySelector("#status");
 const resultsEl = document.querySelector("#results");
+const downloadWordlistJsonBtn = document.querySelector("#download-wordlist-json-btn");
 
 const graphForm = document.querySelector("#graph-form");
 const graphSeedInput = document.querySelector("#graph-seed-input");
@@ -19,17 +21,16 @@ const graphNeighborsInput = document.querySelector("#graph-neighbors-input");
 const graphThresholdInput = document.querySelector("#graph-threshold-input");
 const graphModelSelect = document.querySelector("#graph-model-select");
 const graphNormalizationSelect = document.querySelector("#graph-normalization-select");
-const graphAlgorithmSelect = document.querySelector("#graph-algorithm-select");
-const graphReclusterBtn = document.querySelector("#graph-recluster-btn");
 const graphStatusEl = document.querySelector("#graph-status");
 const graphCanvasEl = document.querySelector("#graph-canvas");
 const clusterResultsEl = document.querySelector("#cluster-results");
+const downloadClustersJsonBtn = document.querySelector("#download-clusters-json-btn");
 
 const tabButtons = [...document.querySelectorAll(".tab-button")];
 const tabContents = [...document.querySelectorAll(".tab-content")];
-let lastBuiltGraph = null;
-let lastBuiltGraphKey = null;
 const graphCache = new Map();
+let lastWordListExport = null;
+let lastClusterExport = null;
 
 function setActiveTab(tabId) {
   for (const button of tabButtons) {
@@ -44,6 +45,13 @@ for (const button of tabButtons) {
   button.addEventListener("click", () => setActiveTab(button.dataset.tab));
 }
 
+if (downloadWordlistJsonBtn) {
+  downloadWordlistJsonBtn.disabled = true;
+}
+if (downloadClustersJsonBtn) {
+  downloadClustersJsonBtn.disabled = true;
+}
+
 function parseWords(rawText) {
   if (!rawText.trim()) {
     return [];
@@ -53,6 +61,28 @@ function parseWords(rawText) {
     .split(/[,\s]+/)
     .map((word) => word.trim())
     .filter(Boolean);
+}
+
+function downloadJson(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFileStamp(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9._-]/g, "")
+    .slice(0, 40) || "export";
 }
 
 function normalizeWord(word, mode = "case-sensitive") {
@@ -146,6 +176,17 @@ async function handleWordListSubmit(event) {
     }
 
     renderWordResults(groups);
+    lastWordListExport = {
+      type: "wordsim-wordlists",
+      generated_at: new Date().toISOString(),
+      model,
+      limit,
+      input_words: words,
+      groups,
+    };
+    if (downloadWordlistJsonBtn) {
+      downloadWordlistJsonBtn.disabled = false;
+    }
     statusEl.textContent = `Ferdig. Modell: ${
       model === "vss_1850_cos" ? "1800-tallet" : "1900-tallet"
     }.`;
@@ -516,7 +557,7 @@ function readGraphControls() {
   const seedWord = graphSeedInput?.value?.trim() || "";
   const depth = Math.min(2, Math.max(1, Number(graphDepthInput?.value) || 1));
   const maxNeighbors = Math.min(
-    10,
+    20,
     Math.max(1, Number(graphNeighborsInput?.value) || 10),
   );
   const threshold = Math.min(
@@ -525,7 +566,6 @@ function readGraphControls() {
   );
   const model = graphModelSelect?.value || "vss_1850_cos";
   const normalizationMode = graphNormalizationSelect?.value || "case-sensitive";
-  const algorithm = graphAlgorithmSelect?.value || "cw";
 
   return {
     build: {
@@ -537,7 +577,7 @@ function readGraphControls() {
       normalizationMode,
     },
     cluster: {
-      algorithm,
+      algorithm: DEFAULT_CLUSTER_ALGORITHM,
       normalizationMode,
     },
   };
@@ -567,6 +607,30 @@ function renderClusteredGraph(graph, options) {
     graph.edges,
     options.algorithm,
   );
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node.word]));
+  const clustersForExport = clusters.map((cluster, idx) => ({
+    cluster_index: idx + 1,
+    size: cluster.size,
+    words: cluster.members.map((id) => nodeById.get(id) || id),
+  }));
+
+  lastClusterExport = {
+    type: "wordsim-graph-clusters",
+    generated_at: new Date().toISOString(),
+    algorithm: options.algorithm,
+    normalization_mode: options.normalizationMode,
+    graph: {
+      node_count: graph.nodes.length,
+      edge_count: graph.edges.length,
+      nodes: graph.nodes,
+      edges: graph.edges,
+    },
+    clusters: clustersForExport,
+  };
+  if (downloadClustersJsonBtn) {
+    downloadClustersJsonBtn.disabled = false;
+  }
+
   renderGraph(graph, clusterByNode);
   renderClusters(graph.nodes, clusters);
   graphStatusEl.textContent = `${options.triggerLabel}: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${options.normalizationMode}, ${options.algorithm}).`;
@@ -597,9 +661,6 @@ async function handleGraphSubmit(event) {
       graphCache.set(key, graph);
     }
 
-    lastBuiltGraph = graph;
-    lastBuiltGraphKey = key;
-
     if (graph.nodes.length === 0) {
       graphStatusEl.textContent = "Ingen treff for valgt oppsett.";
       return;
@@ -615,40 +676,22 @@ async function handleGraphSubmit(event) {
   }
 }
 
-async function handleRecluster() {
-  const controls = readGraphControls();
-  const { build, cluster } = controls;
-
-  if (!build.seedWord) {
-    graphStatusEl.textContent = "Skriv inn ett startord.";
+function handleDownloadWordlistsJson() {
+  if (!lastWordListExport) {
+    statusEl.textContent = "Ingen ordlister å laste ned enda.";
     return;
   }
+  const stamp = safeFileStamp(lastWordListExport.model);
+  downloadJson(`wordlists-${stamp}.json`, lastWordListExport);
+}
 
-  const key = graphCacheKey(build);
-  let graph = graphCache.get(key);
-
-  if (!graph && lastBuiltGraph && lastBuiltGraphKey === key) {
-    graph = lastBuiltGraph;
+function handleDownloadClustersJson() {
+  if (!lastClusterExport) {
+    graphStatusEl.textContent = "Ingen clustre å laste ned enda.";
+    return;
   }
-
-  if (!graph) {
-    graphStatusEl.textContent = "Bygger graf for nye innstillinger ...";
-    try {
-      graph = await buildGraph(build.seedWord, build);
-      graphCache.set(key, graph);
-    } catch (error) {
-      graphStatusEl.textContent = "Kunne ikke bygge graf fra API-kall.";
-      console.error(error);
-      return;
-    }
-  }
-
-  lastBuiltGraph = graph;
-  lastBuiltGraphKey = key;
-  renderClusteredGraph(graph, {
-    ...cluster,
-    triggerLabel: "Reclustret graf",
-  });
+  const stamp = safeFileStamp(lastClusterExport.algorithm);
+  downloadJson(`clusters-${stamp}.json`, lastClusterExport);
 }
 
 if (form) {
@@ -657,6 +700,9 @@ if (form) {
 if (graphForm) {
   graphForm.addEventListener("submit", handleGraphSubmit);
 }
-if (graphReclusterBtn) {
-  graphReclusterBtn.addEventListener("click", handleRecluster);
+if (downloadWordlistJsonBtn) {
+  downloadWordlistJsonBtn.addEventListener("click", handleDownloadWordlistsJson);
+}
+if (downloadClustersJsonBtn) {
+  downloadClustersJsonBtn.addEventListener("click", handleDownloadClustersJson);
 }

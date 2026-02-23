@@ -95,6 +95,23 @@ button:hover {
   color: #374151;
 }
 
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.actions button {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #d1d5db;
+}
+
+.actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .result-card {
   margin-top: 0.75rem;
   background: #ffffff;
