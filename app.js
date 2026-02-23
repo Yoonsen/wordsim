@@ -19,7 +19,6 @@ const graphNeighborsInput = document.querySelector("#graph-neighbors-input");
 const graphThresholdInput = document.querySelector("#graph-threshold-input");
 const graphModelSelect = document.querySelector("#graph-model-select");
 const graphNormalizationSelect = document.querySelector("#graph-normalization-select");
-const graphClusterWordsSelect = document.querySelector("#graph-cluster-words-select");
 const graphAlgorithmSelect = document.querySelector("#graph-algorithm-select");
 const graphReclusterBtn = document.querySelector("#graph-recluster-btn");
 const graphStatusEl = document.querySelector("#graph-status");
@@ -29,6 +28,8 @@ const clusterResultsEl = document.querySelector("#cluster-results");
 const tabButtons = [...document.querySelectorAll(".tab-button")];
 const tabContents = [...document.querySelectorAll(".tab-content")];
 let lastBuiltGraph = null;
+let lastBuiltGraphKey = null;
+const graphCache = new Map();
 
 function setActiveTab(tabId) {
   for (const button of tabButtons) {
@@ -370,7 +371,7 @@ function clusterGraph(nodes, edges, algorithm) {
   return runChineseWhispers(nodes, edges);
 }
 
-function renderClusters(nodes, clusters, showAllWords = false) {
+function renderClusters(nodes, clusters) {
   const nodeById = new Map(nodes.map((node) => [node.id, node.word]));
   clusterResultsEl.innerHTML = "";
 
@@ -386,9 +387,21 @@ function renderClusters(nodes, clusters, showAllWords = false) {
   clusters.forEach((cluster, idx) => {
     const item = document.createElement("li");
     const words = cluster.members.map((id) => nodeById.get(id) || id);
-    const visibleWords = showAllWords ? words : words.slice(0, 12);
-    const suffix = showAllWords || words.length <= 12 ? "" : " ...";
-    item.textContent = `Cluster ${idx + 1} (${cluster.size}): ${visibleWords.join(", ")}${suffix}`;
+    const visibleWords = words;
+
+    const summary = document.createElement("p");
+    summary.className = "cluster-summary";
+    summary.textContent = `Cluster ${idx + 1} (${cluster.size})`;
+
+    const wordsLine = document.createElement("p");
+    wordsLine.className = "cluster-words";
+    wordsLine.textContent = visibleWords.join(", ");
+
+    const meta = document.createElement("p");
+    meta.className = "cluster-meta";
+    meta.textContent = `Viser alle ord (${visibleWords.length}/${words.length}).`;
+
+    item.append(summary, wordsLine, meta);
     list.append(item);
   });
 
@@ -499,6 +512,48 @@ function renderGraph(graph, clusterByNode) {
   });
 }
 
+function readGraphControls() {
+  const seedWord = graphSeedInput.value.trim();
+  const depth = Math.min(2, Math.max(1, Number(graphDepthInput.value) || 1));
+  const maxNeighbors = Math.min(
+    10,
+    Math.max(1, Number(graphNeighborsInput.value) || 10),
+  );
+  const threshold = Math.min(
+    1,
+    Math.max(0, Number(graphThresholdInput.value) || 0.7),
+  );
+  const model = graphModelSelect.value;
+  const normalizationMode = graphNormalizationSelect.value;
+  const algorithm = graphAlgorithmSelect.value;
+
+  return {
+    build: {
+      seedWord,
+      depth,
+      maxNeighbors,
+      threshold,
+      model,
+      normalizationMode,
+    },
+    cluster: {
+      algorithm,
+      normalizationMode,
+    },
+  };
+}
+
+function graphCacheKey(options) {
+  return [
+    normalizeWord(options.seedWord, "case-sensitive"),
+    options.depth,
+    options.maxNeighbors,
+    options.threshold.toFixed(4),
+    options.model,
+    options.normalizationMode,
+  ].join("|");
+}
+
 function renderClusteredGraph(graph, options) {
   if (!graph || graph.nodes.length === 0) {
     graphStatusEl.textContent = "Ingen graf å vise.";
@@ -513,29 +568,17 @@ function renderClusteredGraph(graph, options) {
     options.algorithm,
   );
   renderGraph(graph, clusterByNode);
-  renderClusters(graph.nodes, clusters, options.showAllClusterWords);
-  graphStatusEl.textContent = `Ferdig: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${options.normalizationMode}, ${options.algorithm}).`;
+  renderClusters(graph.nodes, clusters);
+  graphStatusEl.textContent = `${options.triggerLabel}: ${graph.nodes.length} noder, ${graph.edges.length} kanter, ${clusters.length} clustre (${options.normalizationMode}, ${options.algorithm}).`;
 }
 
 async function handleGraphSubmit(event) {
   event.preventDefault();
 
-  const seedWord = graphSeedInput.value.trim();
-  const depth = Math.min(2, Math.max(1, Number(graphDepthInput.value) || 1));
-  const maxNeighbors = Math.min(
-    10,
-    Math.max(1, Number(graphNeighborsInput.value) || 10),
-  );
-  const threshold = Math.min(
-    1,
-    Math.max(0, Number(graphThresholdInput.value) || 0.7),
-  );
-  const model = graphModelSelect.value;
-  const normalizationMode = graphNormalizationSelect.value;
-  const showAllClusterWords = graphClusterWordsSelect.value === "all";
-  const algorithm = graphAlgorithmSelect.value;
+  const controls = readGraphControls();
+  const { build, cluster } = controls;
 
-  if (!seedWord) {
+  if (!build.seedWord) {
     graphStatusEl.textContent = "Skriv inn ett startord.";
     graphCanvasEl.innerHTML = "";
     clusterResultsEl.innerHTML = "";
@@ -547,14 +590,15 @@ async function handleGraphSubmit(event) {
   clusterResultsEl.innerHTML = "";
 
   try {
-    const graph = await buildGraph(seedWord, {
-      depth,
-      maxNeighbors,
-      threshold,
-      model,
-      normalizationMode,
-    });
+    const key = graphCacheKey(build);
+    let graph = graphCache.get(key);
+    if (!graph) {
+      graph = await buildGraph(build.seedWord, build);
+      graphCache.set(key, graph);
+    }
+
     lastBuiltGraph = graph;
+    lastBuiltGraphKey = key;
 
     if (graph.nodes.length === 0) {
       graphStatusEl.textContent = "Ingen treff for valgt oppsett.";
@@ -562,9 +606,8 @@ async function handleGraphSubmit(event) {
     }
 
     renderClusteredGraph(graph, {
-      algorithm,
-      showAllClusterWords,
-      normalizationMode,
+      ...cluster,
+      triggerLabel: "Bygget graf",
     });
   } catch (error) {
     graphStatusEl.textContent = "Kunne ikke bygge graf fra API-kall.";
@@ -572,19 +615,39 @@ async function handleGraphSubmit(event) {
   }
 }
 
-function handleRecluster() {
-  if (!lastBuiltGraph || lastBuiltGraph.nodes.length === 0) {
-    graphStatusEl.textContent = "Bygg en graf først, deretter kan du reclustre.";
+async function handleRecluster() {
+  const controls = readGraphControls();
+  const { build, cluster } = controls;
+
+  if (!build.seedWord) {
+    graphStatusEl.textContent = "Skriv inn ett startord.";
     return;
   }
 
-  const normalizationMode = graphNormalizationSelect.value;
-  const showAllClusterWords = graphClusterWordsSelect.value === "all";
-  const algorithm = graphAlgorithmSelect.value;
-  renderClusteredGraph(lastBuiltGraph, {
-    algorithm,
-    showAllClusterWords,
-    normalizationMode,
+  const key = graphCacheKey(build);
+  let graph = graphCache.get(key);
+
+  if (!graph && lastBuiltGraph && lastBuiltGraphKey === key) {
+    graph = lastBuiltGraph;
+  }
+
+  if (!graph) {
+    graphStatusEl.textContent = "Bygger graf for nye innstillinger ...";
+    try {
+      graph = await buildGraph(build.seedWord, build);
+      graphCache.set(key, graph);
+    } catch (error) {
+      graphStatusEl.textContent = "Kunne ikke bygge graf fra API-kall.";
+      console.error(error);
+      return;
+    }
+  }
+
+  lastBuiltGraph = graph;
+  lastBuiltGraphKey = key;
+  renderClusteredGraph(graph, {
+    ...cluster,
+    triggerLabel: "Reclustret graf",
   });
 }
 
