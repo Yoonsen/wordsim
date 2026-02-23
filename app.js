@@ -64,9 +64,22 @@ function parseWords(rawText) {
 }
 
 function downloadJson(filename, data) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json;charset=utf-8",
-  });
+  const seen = new WeakSet();
+  const serialized = JSON.stringify(
+    data,
+    (key, value) => {
+      if (value && typeof value === "object") {
+        if (seen.has(value)) {
+          return undefined;
+        }
+        seen.add(value);
+      }
+      return value;
+    },
+    2,
+  );
+
+  const blob = new Blob([serialized], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -74,7 +87,8 @@ function downloadJson(filename, data) {
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Some browsers need a tiny delay before revoking.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function safeFileStamp(value) {
@@ -614,6 +628,17 @@ function renderClusteredGraph(graph, options) {
     words: cluster.members.map((id) => nodeById.get(id) || id),
   }));
 
+  const safeNodes = graph.nodes.map((node) => ({
+    id: node.id,
+    word: node.word,
+    depth: node.depth,
+  }));
+  const safeEdges = graph.edges.map((edge) => ({
+    source: typeof edge.source === "object" ? edge.source.id : edge.source,
+    target: typeof edge.target === "object" ? edge.target.id : edge.target,
+    weight: edge.weight,
+  }));
+
   lastClusterExport = {
     type: "wordsim-graph-clusters",
     generated_at: new Date().toISOString(),
@@ -622,8 +647,8 @@ function renderClusteredGraph(graph, options) {
     graph: {
       node_count: graph.nodes.length,
       edge_count: graph.edges.length,
-      nodes: graph.nodes,
-      edges: graph.edges,
+      nodes: safeNodes,
+      edges: safeEdges,
     },
     clusters: clustersForExport,
   };
@@ -681,8 +706,14 @@ function handleDownloadWordlistsJson() {
     statusEl.textContent = "Ingen ordlister å laste ned enda.";
     return;
   }
-  const stamp = safeFileStamp(lastWordListExport.model);
-  downloadJson(`wordlists-${stamp}.json`, lastWordListExport);
+  try {
+    const stamp = safeFileStamp(lastWordListExport.model);
+    downloadJson(`wordlists-${stamp}.json`, lastWordListExport);
+    statusEl.textContent = "Lastet ned ordlister som JSON.";
+  } catch (error) {
+    statusEl.textContent = "Nedlasting av ordlister feilet.";
+    console.error(error);
+  }
 }
 
 function handleDownloadClustersJson() {
@@ -690,8 +721,14 @@ function handleDownloadClustersJson() {
     graphStatusEl.textContent = "Ingen clustre å laste ned enda.";
     return;
   }
-  const stamp = safeFileStamp(lastClusterExport.algorithm);
-  downloadJson(`clusters-${stamp}.json`, lastClusterExport);
+  try {
+    const stamp = safeFileStamp(lastClusterExport.algorithm);
+    downloadJson(`clusters-${stamp}.json`, lastClusterExport);
+    graphStatusEl.textContent = "Lastet ned clustre som JSON.";
+  } catch (error) {
+    graphStatusEl.textContent = "Nedlasting av clustre feilet.";
+    console.error(error);
+  }
 }
 
 if (form) {
